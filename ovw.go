@@ -1,26 +1,45 @@
 package ovw
 
 import (
-	"errors"
-	"log"
-
 	"github.com/fatih/structs"
+	"github.com/mitchellh/mapstructure"
+	"github.com/pkg/errors"
 )
 
-// OverWrite over write struct values
-func OverWrite(dst, src interface{}) error {
-	srcMap := structs.Map(src)
-	s := structs.New(dst)
-	for _, k := range s.Fields() {
-		v, ok := srcMap[k.Name()]
+// MergeOverwrite overwrite map
+func MergeOverwrite(to, from, dst interface{}) error {
+	toMap := structs.Map(to)
+	toStruct := structs.New(to)
+	fromMap := structs.Map(from)
+	fromStruct := structs.New(from)
+	for k, v := range fromMap {
+		_, ok := toMap[k]
 		if !ok {
-			return errors.New("no")
+			return errors.Errorf("no key: %s", k)
 		}
-		log.Printf("%s: %v", k.Name(), v)
-		if err := k.Set(srcMap[k.Name()]); err != nil {
-			return err
+		toField := toStruct.Field(k)
+		fromField := fromStruct.Field(k)
+		if overwriteable(toField, fromField) {
+			toMap[k] = v
 		}
-		log.Printf("%s: %t, %v", k.Name(), k.IsZero(), k.Value())
+	}
+	if err := mapstructure.Decode(toMap, dst); err != nil {
+		return errors.Wrap(err, "faield to decode")
 	}
 	return nil
+}
+
+func overwriteable(to, from *structs.Field) bool {
+	if to.Kind().String() == "bool" {
+		return true
+	}
+	switch {
+	case to.IsZero() && !from.IsZero():
+		return true
+	case !to.IsZero() && !from.IsZero():
+		return true
+	case !to.IsZero() && from.IsZero():
+		return false
+	}
+	return true
 }
